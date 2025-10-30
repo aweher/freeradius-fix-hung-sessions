@@ -377,7 +377,7 @@ Este proyecto está bajo la licencia MIT. Ver archivo `LICENSE` para más detall
 
 ## 👤 Autor
 
-**Tu Nombre/Organización**
+Ariel S. Weher / Ayuda.LA
 
 ## 🙏 Agradecimientos
 
