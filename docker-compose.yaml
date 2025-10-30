@@ -1,15 +1,13 @@
-version: "3.8"
-
+---
 services:
   radius_session_fixer:
     build: .
     container_name: radius_session_fixer
-    restart: always
+    restart: unless-stopped
     environment:
       DB_HOST: db_host
       DB_USER: db_user
       DB_PASSWORD: db_password
       DB_DATABASE: radius
       HUNG_SESSION_THRESHOLD: 15      # minutos sin update para considerar sesión colgada
-      STOP_INTERVAL: 5                # minutos para establecer acctstoptime luego del último update
-      EXEC_INTERVAL: 300             # frecuencia de ejecución del script (en segundos)
+      EXEC_INTERVAL: 300              # frecuencia de ejecución del script (en segundos)
