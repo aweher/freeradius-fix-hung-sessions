@@ -53,7 +53,7 @@ def find_hung_sessions(connection, threshold_minutes):
         logger.error("Error al buscar sesiones colgadas: %s", e)
         raise
 
-def fix_hung_sessions(connection, sessions):
+def fix_hung_sessions(connection, sessions, dry_run=False):
     try:
         with connection.cursor() as cursor:
             for session in sessions:
@@ -67,26 +67,37 @@ def fix_hung_sessions(connection, sessions):
                     session_time = 0
                     logger.warning("Sesión %s no tiene acctstarttime", session['radacctid'])
                 
-                cursor.execute("""
-                    UPDATE radacct 
-                    SET acctstoptime = %s, 
-                        acctterminatecause = %s,
-                        acctsessiontime = %s
-                    WHERE radacctid = %s
-                """, (stop_time, 'Session-Timeout', session_time, session['radacctid']))
-                
-                logger.info(
-                    "Sesión actualizada: radacctid=%s, username=%s, duration=%ds",
-                    session['radacctid'], session['username'], session_time
-                )
+                if dry_run:
+                    logger.info(
+                        "[DRY-RUN] Sesión que se actualizaría: radacctid=%s, username=%s, duration=%ds, "
+                        "acctstoptime=%s, acctterminatecause=Session-Timeout",
+                        session['radacctid'], session['username'], session_time, stop_time
+                    )
+                else:
+                    cursor.execute("""
+                        UPDATE radacct 
+                        SET acctstoptime = %s, 
+                            acctterminatecause = %s,
+                            acctsessiontime = %s
+                        WHERE radacctid = %s
+                    """, (stop_time, 'Session-Timeout', session_time, session['radacctid']))
+                    
+                    logger.info(
+                        "Sesión actualizada: radacctid=%s, username=%s, duration=%ds",
+                        session['radacctid'], session['username'], session_time
+                    )
         
-        connection.commit()
-        logger.info("Commit exitoso: %d sesiones actualizadas", len(sessions))
+        if dry_run:
+            logger.info("[DRY-RUN] No se realizaron cambios en la base de datos (%d sesiones analizadas)", len(sessions))
+        else:
+            connection.commit()
+            logger.info("Commit exitoso: %d sesiones actualizadas", len(sessions))
         
     except pymysql.Error as e:
         logger.error("Error al actualizar sesiones: %s", e)
-        connection.rollback()
-        logger.info("Rollback ejecutado")
+        if not dry_run:
+            connection.rollback()
+            logger.info("Rollback ejecutado")
         raise
 
 def main():
@@ -96,6 +107,10 @@ def main():
         
         # Obtener parámetros
         threshold = int(os.getenv('HUNG_SESSION_THRESHOLD', '60'))
+        dry_run = os.getenv('DRY_RUN', 'false').lower() in ('true', '1', 'yes', 'y')
+        
+        if dry_run:
+            logger.info("*** MODO DRY-RUN ACTIVADO - No se modificarán datos ***")
         
         logger.info("Iniciando búsqueda de sesiones colgadas (threshold=%d minutos)", threshold)
         
@@ -105,7 +120,7 @@ def main():
             sessions = find_hung_sessions(conn, threshold)
             if sessions:
                 logger.info("Iniciando corrección de %d sesiones colgadas...", len(sessions))
-                fix_hung_sessions(conn, sessions)
+                fix_hung_sessions(conn, sessions, dry_run=dry_run)
                 logger.info("Proceso completado exitosamente")
             else:
                 logger.info("No se encontraron sesiones colgadas")

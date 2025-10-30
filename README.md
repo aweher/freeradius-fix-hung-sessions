@@ -16,6 +16,7 @@ Este script identifica sesiones de usuarios que no han recibido actualizaciones 
 - ✅ **Validación robusta**: Verificación de variables de entorno al inicio
 - ✅ **Manejo de errores**: Try-catch en todas las operaciones críticas con rollback automático
 - ✅ **Cálculo preciso**: `acctsessiontime` calculado correctamente desde `acctstarttime`
+- ✅ **Modo Dry-Run**: Prueba sin modificar datos, ideal para verificar cambios antes de aplicarlos
 - ✅ **Docker ready**: Contenedor listo para producción con ejecución periódica
 - ✅ **Códigos de salida**: Códigos específicos para diferentes tipos de errores
 
@@ -74,6 +75,7 @@ docker-compose up -d
 | `DB_PASSWORD` | Contraseña del usuario | `secretpassword` | ✅ Sí |
 | `DB_DATABASE` | Nombre de la base de datos | `radius` | ✅ Sí |
 | `HUNG_SESSION_THRESHOLD` | Minutos sin actualización para considerar sesión colgada | `60` | ❌ No (default: 60) |
+| `DRY_RUN` | Modo de prueba (solo registra sin modificar datos) | `true`, `false`, `1`, `0`, `yes`, `no` | ❌ No (default: false) |
 | `EXEC_INTERVAL` | Segundos entre ejecuciones (solo Docker) | `300` | ❌ No (default: 3600) |
 
 ### Customización con docker-compose.override.yaml
@@ -92,6 +94,7 @@ services:
       DB_DATABASE: radius
       HUNG_SESSION_THRESHOLD: 15  # 15 minutos
       EXEC_INTERVAL: 300          # cada 5 minutos
+      DRY_RUN: false              # cambiar a 'true' para modo prueba
 EOF
 ```
 
@@ -111,6 +114,27 @@ export DB_USER=radius
 export DB_PASSWORD=pass
 export DB_DATABASE=radius
 python fix_sessions.py
+```
+
+### Modo Dry-Run (prueba sin modificar datos)
+
+El modo dry-run permite ejecutar el script para ver qué sesiones serían modificadas sin realizar cambios reales en la base de datos:
+
+```bash
+# Ejecutar en modo dry-run
+DRY_RUN=true DB_HOST=192.168.1.100 DB_USER=radius DB_PASSWORD=pass DB_DATABASE=radius python fix_sessions.py
+
+# O con exportación de variables
+export DB_HOST=192.168.1.100
+export DB_USER=radius
+export DB_PASSWORD=pass
+export DB_DATABASE=radius
+export DRY_RUN=true
+python fix_sessions.py
+
+# También acepta otros valores: 1, yes, y (case-insensitive)
+DRY_RUN=1 python fix_sessions.py
+DRY_RUN=yes python fix_sessions.py
 ```
 
 ### Ejecución con Docker
@@ -152,6 +176,23 @@ crontab -e
 2025-10-30 10:15:23 - INFO - Commit exitoso: 3 sesiones actualizadas
 2025-10-30 10:15:23 - INFO - Proceso completado exitosamente
 2025-10-30 10:15:23 - INFO - Conexión cerrada
+```
+
+### Modo Dry-Run (sin modificar datos)
+
+```
+2025-10-30 10:30:15 - INFO - Variables de entorno validadas correctamente
+2025-10-30 10:30:15 - INFO - *** MODO DRY-RUN ACTIVADO - No se modificarán datos ***
+2025-10-30 10:30:15 - INFO - Iniciando búsqueda de sesiones colgadas (threshold=60 minutos)
+2025-10-30 10:30:15 - INFO - Conectado exitosamente a la base de datos en 192.168.1.100
+2025-10-30 10:30:15 - INFO - Encontradas 3 sesiones colgadas
+2025-10-30 10:30:15 - INFO - Iniciando corrección de 3 sesiones colgadas...
+2025-10-30 10:30:15 - INFO - [DRY-RUN] Sesión que se actualizaría: radacctid=12345, username=user@domain.com, duration=3600s, acctstoptime=2025-10-30 09:30:15, acctterminatecause=Session-Timeout
+2025-10-30 10:30:15 - INFO - [DRY-RUN] Sesión que se actualizaría: radacctid=12346, username=user2@domain.com, duration=7200s, acctstoptime=2025-10-30 08:30:15, acctterminatecause=Session-Timeout
+2025-10-30 10:30:15 - INFO - [DRY-RUN] Sesión que se actualizaría: radacctid=12347, username=user3@domain.com, duration=1800s, acctstoptime=2025-10-30 10:00:15, acctterminatecause=Session-Timeout
+2025-10-30 10:30:15 - INFO - [DRY-RUN] No se realizaron cambios en la base de datos (3 sesiones analizadas)
+2025-10-30 10:30:15 - INFO - Proceso completado exitosamente
+2025-10-30 10:30:15 - INFO - Conexión cerrada
 ```
 
 ### Sin sesiones colgadas
