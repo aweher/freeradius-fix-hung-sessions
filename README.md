@@ -17,6 +17,7 @@ Este script identifica sesiones de usuarios que no han recibido actualizaciones 
 - ✅ **Manejo de errores**: Try-catch en todas las operaciones críticas con rollback automático
 - ✅ **Cálculo preciso**: `acctsessiontime` calculado correctamente desde `acctstarttime`
 - ✅ **Modo Dry-Run**: Prueba sin modificar datos, ideal para verificar cambios antes de aplicarlos
+- ✅ **Modo Debug**: Muestra todos los queries SQL ejecutados para troubleshooting y auditoría
 - ✅ **Docker ready**: Contenedor listo para producción con ejecución periódica
 - ✅ **Códigos de salida**: Códigos específicos para diferentes tipos de errores
 
@@ -76,6 +77,7 @@ docker-compose up -d
 | `DB_DATABASE` | Nombre de la base de datos | `radius` | ✅ Sí |
 | `HUNG_SESSION_THRESHOLD` | Minutos sin actualización para considerar sesión colgada | `60` | ❌ No (default: 60) |
 | `DRY_RUN` | Modo de prueba (solo registra sin modificar datos) | `true`, `false`, `1`, `0`, `yes`, `no` | ❌ No (default: false) |
+| `DEBUG` | Modo debug (muestra queries SQL ejecutados) | `true`, `false`, `1`, `0`, `yes`, `no` | ❌ No (default: false) |
 | `EXEC_INTERVAL` | Segundos entre ejecuciones (solo Docker) | `300` | ❌ No (default: 3600) |
 
 ### Customización con docker-compose.override.yaml
@@ -95,6 +97,7 @@ services:
       HUNG_SESSION_THRESHOLD: 15  # 15 minutos
       EXEC_INTERVAL: 300          # cada 5 minutos
       DRY_RUN: false              # cambiar a 'true' para modo prueba
+      DEBUG: false                # cambiar a 'true' para ver queries SQL
 EOF
 ```
 
@@ -135,6 +138,30 @@ python fix_sessions.py
 # También acepta otros valores: 1, yes, y (case-insensitive)
 DRY_RUN=1 python fix_sessions.py
 DRY_RUN=yes python fix_sessions.py
+```
+
+### Modo Debug (ver queries SQL ejecutados)
+
+El modo debug muestra todos los queries SQL que se ejecutan en la base de datos, útil para troubleshooting y auditoría:
+
+```bash
+# Ejecutar en modo debug
+DEBUG=true DB_HOST=192.168.1.100 DB_USER=radius DB_PASSWORD=pass DB_DATABASE=radius python fix_sessions.py
+
+# Combinar con dry-run para ver los queries sin ejecutarlos
+DEBUG=true DRY_RUN=true DB_HOST=192.168.1.100 DB_USER=radius DB_PASSWORD=pass DB_DATABASE=radius python fix_sessions.py
+
+# O con exportación de variables
+export DB_HOST=192.168.1.100
+export DB_USER=radius
+export DB_PASSWORD=pass
+export DB_DATABASE=radius
+export DEBUG=true
+python fix_sessions.py
+
+# También acepta otros valores: 1, yes, y (case-insensitive)
+DEBUG=1 python fix_sessions.py
+DEBUG=yes python fix_sessions.py
 ```
 
 ### Ejecución con Docker
@@ -193,6 +220,25 @@ crontab -e
 2025-10-30 10:30:15 - INFO - [DRY-RUN] No se realizaron cambios en la base de datos (3 sesiones analizadas)
 2025-10-30 10:30:15 - INFO - Proceso completado exitosamente
 2025-10-30 10:30:15 - INFO - Conexión cerrada
+```
+
+### Modo Debug (mostrando queries SQL)
+
+```
+2025-10-30 10:45:30 - INFO - Variables de entorno validadas correctamente
+2025-10-30 10:45:30 - INFO - *** MODO DEBUG ACTIVADO - Se mostrarán todos los queries SQL ***
+2025-10-30 10:45:30 - INFO - Iniciando búsqueda de sesiones colgadas (threshold=60 minutos)
+2025-10-30 10:45:30 - INFO - Conectado exitosamente a la base de datos en 192.168.1.100
+2025-10-30 10:45:30 - DEBUG - [SQL] Query: SELECT radacctid, username, acctstarttime, acctupdatetime FROM radacct WHERE acctstoptime IS NULL AND acctupdatetime < (NOW() - INTERVAL %s MINUTE) | Params: (60,)
+2025-10-30 10:45:30 - INFO - Encontradas 2 sesiones colgadas
+2025-10-30 10:45:30 - INFO - Iniciando corrección de 2 sesiones colgadas...
+2025-10-30 10:45:30 - DEBUG - [SQL] Query: UPDATE radacct SET acctstoptime = %s, acctterminatecause = %s, acctsessiontime = %s WHERE radacctid = %s | Params: (datetime.datetime(2025, 10, 30, 9, 45, 30), 'Session-Timeout', 3600, 12345)
+2025-10-30 10:45:30 - INFO - Sesión actualizada: radacctid=12345, username=user@domain.com, duration=3600s
+2025-10-30 10:45:30 - DEBUG - [SQL] Query: UPDATE radacct SET acctstoptime = %s, acctterminatecause = %s, acctsessiontime = %s WHERE radacctid = %s | Params: (datetime.datetime(2025, 10, 30, 8, 45, 30), 'Session-Timeout', 7200, 12346)
+2025-10-30 10:45:30 - INFO - Sesión actualizada: radacctid=12346, username=user2@domain.com, duration=7200s
+2025-10-30 10:45:30 - INFO - Commit exitoso: 2 sesiones actualizadas
+2025-10-30 10:45:30 - INFO - Proceso completado exitosamente
+2025-10-30 10:45:30 - INFO - Conexión cerrada
 ```
 
 ### Sin sesiones colgadas

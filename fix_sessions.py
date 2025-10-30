@@ -10,6 +10,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Variable global para modo debug
+DEBUG_MODE = False
+
+def log_query(query, params=None):
+    """Registra el query SQL en modo debug."""
+    if DEBUG_MODE:
+        # Limpiar el query de espacios múltiples y saltos de línea para mejor legibilidad
+        clean_query = ' '.join(query.split())
+        if params:
+            logger.debug("[SQL] Query: %s | Params: %s", clean_query, params)
+        else:
+            logger.debug("[SQL] Query: %s", clean_query)
+
 def validate_env_vars():
     """Valida que todas las variables de entorno necesarias existan."""
     required_vars = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_DATABASE']
@@ -40,12 +53,14 @@ def connect_db():
 def find_hung_sessions(connection, threshold_minutes):
     try:
         with connection.cursor() as cursor:
-            cursor.execute("""
+            query = """
                 SELECT radacctid, username, acctstarttime, acctupdatetime
                 FROM radacct
                 WHERE acctstoptime IS NULL
                   AND acctupdatetime < (NOW() - INTERVAL %s MINUTE)
-            """, (threshold_minutes,))
+            """
+            log_query(query, (threshold_minutes,))
+            cursor.execute(query, (threshold_minutes,))
             sessions = cursor.fetchall()
             logger.info("Encontradas %d sesiones colgadas", len(sessions))
             return sessions
@@ -67,20 +82,25 @@ def fix_hung_sessions(connection, sessions, dry_run=False):
                     session_time = 0
                     logger.warning("Sesión %s no tiene acctstarttime", session['radacctid'])
                 
+                update_query = """
+                    UPDATE radacct 
+                    SET acctstoptime = %s, 
+                        acctterminatecause = %s,
+                        acctsessiontime = %s
+                    WHERE radacctid = %s
+                """
+                update_params = (stop_time, 'Session-Timeout', session_time, session['radacctid'])
+                
                 if dry_run:
+                    log_query(update_query, update_params)
                     logger.info(
                         "[DRY-RUN] Sesión que se actualizaría: radacctid=%s, username=%s, duration=%ds, "
                         "acctstoptime=%s, acctterminatecause=Session-Timeout",
                         session['radacctid'], session['username'], session_time, stop_time
                     )
                 else:
-                    cursor.execute("""
-                        UPDATE radacct 
-                        SET acctstoptime = %s, 
-                            acctterminatecause = %s,
-                            acctsessiontime = %s
-                        WHERE radacctid = %s
-                    """, (stop_time, 'Session-Timeout', session_time, session['radacctid']))
+                    log_query(update_query, update_params)
+                    cursor.execute(update_query, update_params)
                     
                     logger.info(
                         "Sesión actualizada: radacctid=%s, username=%s, duration=%ds",
@@ -101,6 +121,8 @@ def fix_hung_sessions(connection, sessions, dry_run=False):
         raise
 
 def main():
+    global DEBUG_MODE
+    
     try:
         # Validar variables de entorno
         validate_env_vars()
@@ -108,6 +130,14 @@ def main():
         # Obtener parámetros
         threshold = int(os.getenv('HUNG_SESSION_THRESHOLD', '60'))
         dry_run = os.getenv('DRY_RUN', 'false').lower() in ('true', '1', 'yes', 'y')
+        DEBUG_MODE = os.getenv('DEBUG', 'false').lower() in ('true', '1', 'yes', 'y')
+        
+        # Configurar nivel de logging si DEBUG está activo
+        if DEBUG_MODE:
+            logger.setLevel(logging.DEBUG)
+            # También configurar el handler root
+            logging.getLogger().setLevel(logging.DEBUG)
+            logger.info("*** MODO DEBUG ACTIVADO - Se mostrarán todos los queries SQL ***")
         
         if dry_run:
             logger.info("*** MODO DRY-RUN ACTIVADO - No se modificarán datos ***")
