@@ -42,8 +42,11 @@ source venv/bin/activate  # En Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 # Configurar variables de entorno
-cp env.example .env
-# Editar .env con tus credenciales
+export DB_HOST=192.168.1.100
+export DB_USER=radius
+export DB_PASSWORD=yourpassword
+export DB_DATABASE=radius
+export HUNG_SESSION_THRESHOLD=60
 ```
 
 ### Opción 2: Docker (recomendado para producción)
@@ -53,8 +56,8 @@ cp env.example .env
 git clone <repository-url>
 cd freeradius-fix-hung-sessions
 
-# Editar docker-compose.yaml con tus credenciales
-vim docker-compose.yaml
+# Crear docker-compose.override.yaml con tus credenciales
+# (ver sección de configuración más abajo)
 
 # Construir y ejecutar
 docker-compose up -d
@@ -73,14 +76,15 @@ docker-compose up -d
 | `HUNG_SESSION_THRESHOLD` | Minutos sin actualización para considerar sesión colgada | `60` | ❌ No (default: 60) |
 | `EXEC_INTERVAL` | Segundos entre ejecuciones (solo Docker) | `300` | ❌ No (default: 3600) |
 
-### Ejemplo de configuración (docker-compose.yaml)
+### Customización con docker-compose.override.yaml
 
-```yaml
+El archivo `docker-compose.yaml` incluye valores placeholder que deben ser sobrescritos para tu entorno. **No modifiques el archivo base**, en su lugar crea un archivo `docker-compose.override.yaml`:
+
+```bash
+# Crear archivo de configuración personalizada
+cat > docker-compose.override.yaml << 'EOF'
 services:
   radius_session_fixer:
-    build: .
-    container_name: radius_session_fixer
-    restart: always
     environment:
       DB_HOST: 192.168.1.100
       DB_USER: radiususer
@@ -88,19 +92,25 @@ services:
       DB_DATABASE: radius
       HUNG_SESSION_THRESHOLD: 15  # 15 minutos
       EXEC_INTERVAL: 300          # cada 5 minutos
+EOF
 ```
+
+> **Nota**: El archivo `docker-compose.override.yaml` es ignorado por Git automáticamente y Docker Compose lo fusionará automáticamente con el archivo base al ejecutar `docker-compose up`.
 
 ## 🚀 Uso
 
 ### Ejecución manual
 
 ```bash
-# Con variables de entorno en .env
-export $(cat .env | xargs)
-python fix_sessions.py
-
-# O definirlas inline
+# Definir variables de entorno inline
 DB_HOST=192.168.1.100 DB_USER=radius DB_PASSWORD=pass DB_DATABASE=radius python fix_sessions.py
+
+# O exportarlas en la sesión actual
+export DB_HOST=192.168.1.100
+export DB_USER=radius
+export DB_PASSWORD=pass
+export DB_DATABASE=radius
+python fix_sessions.py
 ```
 
 ### Ejecución con Docker
@@ -229,20 +239,22 @@ docker-compose config
 
 ```
 freeradius-fix-hung-sessions/
-├── fix_sessions.py       # Script principal
-├── requirements.txt      # Dependencias Python
-├── Dockerfile           # Imagen Docker
-├── docker-compose.yaml  # Configuración Docker Compose
-├── env.example          # Ejemplo de variables de entorno
-├── README.md           # Esta documentación
-└── .gitignore          # Archivos ignorados por Git
+├── fix_sessions.py                  # Script principal
+├── requirements.txt                 # Dependencias Python
+├── Dockerfile                       # Imagen Docker
+├── docker-compose.yaml              # Configuración Docker Compose base
+├── docker-compose.override.yaml*    # Configuración personalizada (no versionado)
+├── README.md                        # Esta documentación
+└── .gitignore                       # Archivos ignorados por Git
+
+* Archivo opcional para customización local
 ```
 
 ## 🔒 Seguridad
 
 - ✅ No almacena credenciales en el código
 - ✅ Variables de entorno para configuración sensible
-- ✅ `.env` incluido en `.gitignore`
+- ✅ `docker-compose.override.yaml` incluido en `.gitignore`
 - ✅ Conexiones con timeout configurado
 - ✅ Uso de prepared statements (prevención SQL injection)
 - ⚠️ Recomendado: Usar `cryptography` para conexiones SSL/TLS

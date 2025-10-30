@@ -175,3 +175,7 @@ cython_debug/
 
 # ASW
 .venv-*
+
+# Docker Compose override (local configuration)
+docker-compose.override.yaml
+docker-compose.override.yml
