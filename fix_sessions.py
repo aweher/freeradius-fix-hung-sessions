@@ -14,14 +14,33 @@ logger = logging.getLogger(__name__)
 DEBUG_MODE = False
 
 def log_query(query, params=None):
-    """Registra el query SQL en modo debug."""
+    """Registra el query SQL en modo debug con valores interpolados."""
     if DEBUG_MODE:
         # Limpiar el query de espacios múltiples y saltos de línea para mejor legibilidad
         clean_query = ' '.join(query.split())
+        
         if params:
-            logger.debug("[SQL] Query: %s | Params: %s", clean_query, params)
+            # Crear una versión del query con los valores reales para debugging
+            expanded_query = clean_query
+            for param in params:
+                # Formatear cada parámetro según su tipo
+                if param is None:
+                    formatted_value = "NULL"
+                elif isinstance(param, str):
+                    # Escapar comillas simples y envolver en comillas
+                    formatted_value = f"'{param.replace('\'', '\'\'')}'"
+                elif isinstance(param, (int, float)):
+                    formatted_value = str(param)
+                else:
+                    # Para datetime y otros tipos, convertir a string y envolver en comillas
+                    formatted_value = f"'{str(param)}'"
+                
+                # Reemplazar el primer %s encontrado
+                expanded_query = expanded_query.replace('%s', formatted_value, 1)
+            
+            logger.debug("[SQL] %s", expanded_query)
         else:
-            logger.debug("[SQL] Query: %s", clean_query)
+            logger.debug("[SQL] %s", clean_query)
 
 def validate_env_vars():
     """Valida que todas las variables de entorno necesarias existan."""
@@ -54,7 +73,8 @@ def find_hung_sessions(connection, threshold_minutes):
     try:
         with connection.cursor() as cursor:
             query = """
-                SELECT radacctid, username, acctstarttime, acctupdatetime
+                SELECT radacctid, username, acctsessionid, acctuniqueid, 
+                       acctstarttime, acctupdatetime
                 FROM radacct
                 WHERE acctstoptime IS NULL
                   AND acctupdatetime < (NOW() - INTERVAL %s MINUTE)
@@ -82,29 +102,45 @@ def fix_hung_sessions(connection, sessions, dry_run=False):
                     session_time = 0
                     logger.warning("Sesión %s no tiene acctstarttime", session['radacctid'])
                 
+                # Usar todas las claves para identificar la sesión correcta
                 update_query = """
                     UPDATE radacct 
                     SET acctstoptime = %s, 
                         acctterminatecause = %s,
                         acctsessiontime = %s
                     WHERE radacctid = %s
+                      AND username = %s
+                      AND acctsessionid = %s
+                      AND acctuniqueid = %s
                 """
-                update_params = (stop_time, 'Session-Timeout', session_time, session['radacctid'])
+                update_params = (
+                    stop_time, 
+                    'Session-Timeout', 
+                    session_time, 
+                    session['radacctid'],
+                    session['username'],
+                    session['acctsessionid'],
+                    session['acctuniqueid']
+                )
                 
                 if dry_run:
                     log_query(update_query, update_params)
                     logger.info(
-                        "[DRY-RUN] Sesión que se actualizaría: radacctid=%s, username=%s, duration=%ds, "
-                        "acctstoptime=%s, acctterminatecause=Session-Timeout",
-                        session['radacctid'], session['username'], session_time, stop_time
+                        "[DRY-RUN] Sesión que se actualizaría: radacctid=%s, username=%s, "
+                        "acctsessionid=%s, acctuniqueid=%s, duration=%ds, acctstoptime=%s, "
+                        "acctterminatecause=Session-Timeout",
+                        session['radacctid'], session['username'], session['acctsessionid'],
+                        session['acctuniqueid'], session_time, stop_time
                     )
                 else:
                     log_query(update_query, update_params)
                     cursor.execute(update_query, update_params)
                     
                     logger.info(
-                        "Sesión actualizada: radacctid=%s, username=%s, duration=%ds",
-                        session['radacctid'], session['username'], session_time
+                        "Sesión actualizada: radacctid=%s, username=%s, acctsessionid=%s, "
+                        "acctuniqueid=%s, duration=%ds",
+                        session['radacctid'], session['username'], session['acctsessionid'],
+                        session['acctuniqueid'], session_time
                     )
         
         if dry_run:

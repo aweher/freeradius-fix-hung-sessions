@@ -14,10 +14,11 @@ Este script identifica sesiones de usuarios que no han recibido actualizaciones 
 
 - ✅ **Logging estructurado**: Sistema de logging completo con timestamps y niveles
 - ✅ **Validación robusta**: Verificación de variables de entorno al inicio
+- ✅ **Identificación segura**: Usa múltiples claves (username, radacctid, acctsessionid, acctuniqueid) para evitar modificar sesiones incorrectas
 - ✅ **Manejo de errores**: Try-catch en todas las operaciones críticas con rollback automático
 - ✅ **Cálculo preciso**: `acctsessiontime` calculado correctamente desde `acctstarttime`
 - ✅ **Modo Dry-Run**: Prueba sin modificar datos, ideal para verificar cambios antes de aplicarlos
-- ✅ **Modo Debug**: Muestra todos los queries SQL ejecutados para troubleshooting y auditoría
+- ✅ **Modo Debug**: Muestra todos los queries SQL ejecutados con valores expandidos (no placeholders) para troubleshooting y auditoría
 - ✅ **Docker ready**: Contenedor listo para producción con ejecución periódica
 - ✅ **Códigos de salida**: Códigos específicos para diferentes tipos de errores
 
@@ -142,7 +143,7 @@ DRY_RUN=yes python fix_sessions.py
 
 ### Modo Debug (ver queries SQL ejecutados)
 
-El modo debug muestra todos los queries SQL que se ejecutan en la base de datos, útil para troubleshooting y auditoría:
+El modo debug muestra todos los queries SQL que se ejecutan en la base de datos con los valores reales (expandidos), útil para troubleshooting y auditoría:
 
 ```bash
 # Ejecutar en modo debug
@@ -163,6 +164,8 @@ python fix_sessions.py
 DEBUG=1 python fix_sessions.py
 DEBUG=yes python fix_sessions.py
 ```
+
+**Nota:** Los queries se muestran con los valores reales interpolados (no con placeholders %s), facilitando la lectura y el debugging.
 
 ### Ejecución con Docker
 
@@ -197,9 +200,9 @@ crontab -e
 2025-10-30 10:15:23 - INFO - Conectado exitosamente a la base de datos en 192.168.1.100
 2025-10-30 10:15:23 - INFO - Encontradas 3 sesiones colgadas
 2025-10-30 10:15:23 - INFO - Iniciando corrección de 3 sesiones colgadas...
-2025-10-30 10:15:23 - INFO - Sesión actualizada: radacctid=12345, username=user@domain.com, duration=3600s
-2025-10-30 10:15:23 - INFO - Sesión actualizada: radacctid=12346, username=user2@domain.com, duration=7200s
-2025-10-30 10:15:23 - INFO - Sesión actualizada: radacctid=12347, username=user3@domain.com, duration=1800s
+2025-10-30 10:15:23 - INFO - Sesión actualizada: radacctid=12345, username=user@domain.com, acctsessionid=ABC123, acctuniqueid=xyz789, duration=3600s
+2025-10-30 10:15:23 - INFO - Sesión actualizada: radacctid=12346, username=user2@domain.com, acctsessionid=DEF456, acctuniqueid=uvw456, duration=7200s
+2025-10-30 10:15:23 - INFO - Sesión actualizada: radacctid=12347, username=user3@domain.com, acctsessionid=GHI789, acctuniqueid=rst123, duration=1800s
 2025-10-30 10:15:23 - INFO - Commit exitoso: 3 sesiones actualizadas
 2025-10-30 10:15:23 - INFO - Proceso completado exitosamente
 2025-10-30 10:15:23 - INFO - Conexión cerrada
@@ -214,32 +217,34 @@ crontab -e
 2025-10-30 10:30:15 - INFO - Conectado exitosamente a la base de datos en 192.168.1.100
 2025-10-30 10:30:15 - INFO - Encontradas 3 sesiones colgadas
 2025-10-30 10:30:15 - INFO - Iniciando corrección de 3 sesiones colgadas...
-2025-10-30 10:30:15 - INFO - [DRY-RUN] Sesión que se actualizaría: radacctid=12345, username=user@domain.com, duration=3600s, acctstoptime=2025-10-30 09:30:15, acctterminatecause=Session-Timeout
-2025-10-30 10:30:15 - INFO - [DRY-RUN] Sesión que se actualizaría: radacctid=12346, username=user2@domain.com, duration=7200s, acctstoptime=2025-10-30 08:30:15, acctterminatecause=Session-Timeout
-2025-10-30 10:30:15 - INFO - [DRY-RUN] Sesión que se actualizaría: radacctid=12347, username=user3@domain.com, duration=1800s, acctstoptime=2025-10-30 10:00:15, acctterminatecause=Session-Timeout
+2025-10-30 10:30:15 - INFO - [DRY-RUN] Sesión que se actualizaría: radacctid=12345, username=user@domain.com, acctsessionid=ABC123, acctuniqueid=xyz789, duration=3600s, acctstoptime=2025-10-30 09:30:15, acctterminatecause=Session-Timeout
+2025-10-30 10:30:15 - INFO - [DRY-RUN] Sesión que se actualizaría: radacctid=12346, username=user2@domain.com, acctsessionid=DEF456, acctuniqueid=uvw456, duration=7200s, acctstoptime=2025-10-30 08:30:15, acctterminatecause=Session-Timeout
+2025-10-30 10:30:15 - INFO - [DRY-RUN] Sesión que se actualizaría: radacctid=12347, username=user3@domain.com, acctsessionid=GHI789, acctuniqueid=rst123, duration=1800s, acctstoptime=2025-10-30 10:00:15, acctterminatecause=Session-Timeout
 2025-10-30 10:30:15 - INFO - [DRY-RUN] No se realizaron cambios en la base de datos (3 sesiones analizadas)
 2025-10-30 10:30:15 - INFO - Proceso completado exitosamente
 2025-10-30 10:30:15 - INFO - Conexión cerrada
 ```
 
-### Modo Debug (mostrando queries SQL)
+### Modo Debug (mostrando queries SQL expandidos)
 
 ```
 2025-10-30 10:45:30 - INFO - Variables de entorno validadas correctamente
 2025-10-30 10:45:30 - INFO - *** MODO DEBUG ACTIVADO - Se mostrarán todos los queries SQL ***
 2025-10-30 10:45:30 - INFO - Iniciando búsqueda de sesiones colgadas (threshold=60 minutos)
 2025-10-30 10:45:30 - INFO - Conectado exitosamente a la base de datos en 192.168.1.100
-2025-10-30 10:45:30 - DEBUG - [SQL] Query: SELECT radacctid, username, acctstarttime, acctupdatetime FROM radacct WHERE acctstoptime IS NULL AND acctupdatetime < (NOW() - INTERVAL %s MINUTE) | Params: (60,)
+2025-10-30 10:45:30 - DEBUG - [SQL] SELECT radacctid, username, acctsessionid, acctuniqueid, acctstarttime, acctupdatetime FROM radacct WHERE acctstoptime IS NULL AND acctupdatetime < (NOW() - INTERVAL 60 MINUTE)
 2025-10-30 10:45:30 - INFO - Encontradas 2 sesiones colgadas
 2025-10-30 10:45:30 - INFO - Iniciando corrección de 2 sesiones colgadas...
-2025-10-30 10:45:30 - DEBUG - [SQL] Query: UPDATE radacct SET acctstoptime = %s, acctterminatecause = %s, acctsessiontime = %s WHERE radacctid = %s | Params: (datetime.datetime(2025, 10, 30, 9, 45, 30), 'Session-Timeout', 3600, 12345)
-2025-10-30 10:45:30 - INFO - Sesión actualizada: radacctid=12345, username=user@domain.com, duration=3600s
-2025-10-30 10:45:30 - DEBUG - [SQL] Query: UPDATE radacct SET acctstoptime = %s, acctterminatecause = %s, acctsessiontime = %s WHERE radacctid = %s | Params: (datetime.datetime(2025, 10, 30, 8, 45, 30), 'Session-Timeout', 7200, 12346)
-2025-10-30 10:45:30 - INFO - Sesión actualizada: radacctid=12346, username=user2@domain.com, duration=7200s
+2025-10-30 10:45:30 - DEBUG - [SQL] UPDATE radacct SET acctstoptime = '2025-10-30 09:45:30', acctterminatecause = 'Session-Timeout', acctsessiontime = 3600 WHERE radacctid = 12345 AND username = 'user@domain.com' AND acctsessionid = 'ABC123' AND acctuniqueid = 'xyz789'
+2025-10-30 10:45:30 - INFO - Sesión actualizada: radacctid=12345, username=user@domain.com, acctsessionid=ABC123, acctuniqueid=xyz789, duration=3600s
+2025-10-30 10:45:30 - DEBUG - [SQL] UPDATE radacct SET acctstoptime = '2025-10-30 08:45:30', acctterminatecause = 'Session-Timeout', acctsessiontime = 7200 WHERE radacctid = 12346 AND username = 'user2@domain.com' AND acctsessionid = 'DEF456' AND acctuniqueid = 'uvw456'
+2025-10-30 10:45:30 - INFO - Sesión actualizada: radacctid=12346, username=user2@domain.com, acctsessionid=DEF456, acctuniqueid=uvw456, duration=7200s
 2025-10-30 10:45:30 - INFO - Commit exitoso: 2 sesiones actualizadas
 2025-10-30 10:45:30 - INFO - Proceso completado exitosamente
 2025-10-30 10:45:30 - INFO - Conexión cerrada
 ```
+
+**Nota:** Los queries se muestran completamente expandidos con los valores reales, listos para copiar y pegar en un cliente MySQL si es necesario.
 
 ### Sin sesiones colgadas
 
@@ -267,7 +272,8 @@ El script realiza las siguientes operaciones:
 2. **Conexión**: Establece conexión segura con la base de datos MySQL/MariaDB
 3. **Búsqueda**: Ejecuta query SQL para encontrar sesiones sin `acctstoptime` y con `acctupdatetime` antiguo:
    ```sql
-   SELECT radacctid, username, acctstarttime, acctupdatetime
+   SELECT radacctid, username, acctsessionid, acctuniqueid, 
+          acctstarttime, acctupdatetime
    FROM radacct
    WHERE acctstoptime IS NULL
      AND acctupdatetime < (NOW() - INTERVAL {threshold} MINUTE)
@@ -276,6 +282,17 @@ El script realiza las siguientes operaciones:
    - Establece `acctstoptime = acctupdatetime`
    - Calcula `acctsessiontime = (acctstoptime - acctstarttime)` en segundos
    - Establece `acctterminatecause = 'Session-Timeout'`
+   - **Usa 4 claves de identificación** (username, radacctid, acctsessionid, acctuniqueid) en el WHERE para garantizar que solo se modifique la sesión correcta:
+   ```sql
+   UPDATE radacct 
+   SET acctstoptime = %s, 
+       acctterminatecause = %s,
+       acctsessiontime = %s
+   WHERE radacctid = %s
+     AND username = %s
+     AND acctsessionid = %s
+     AND acctuniqueid = %s
+   ```
 5. **Commit**: Confirma todos los cambios en una sola transacción
 6. **Rollback automático**: Si ocurre algún error, deshace todos los cambios
 
@@ -344,7 +361,23 @@ freeradius-fix-hung-sessions/
 - ✅ `docker-compose.override.yaml` incluido en `.gitignore`
 - ✅ Conexiones con timeout configurado
 - ✅ Uso de prepared statements (prevención SQL injection)
+- ✅ **Identificación múltiple de sesiones**: Usa 4 claves diferentes (username, radacctid, acctsessionid, acctuniqueid) en el WHERE del UPDATE para garantizar que solo se modifique la sesión correcta y evitar modificaciones accidentales
 - ⚠️ Recomendado: Usar `cryptography` para conexiones SSL/TLS
+
+### Identificación Segura de Sesiones
+
+El script implementa una estrategia de seguridad robusta al identificar sesiones usando **múltiples claves primarias**:
+
+- `username`: Usuario de la sesión
+- `radacctid`: ID único de accounting
+- `acctsessionid`: ID de la sesión RADIUS
+- `acctuniqueid`: ID único global de la sesión
+
+Esta aproximación multi-clave garantiza que:
+1. ✅ Solo se modifica la sesión exacta que corresponde
+2. ✅ Se previenen modificaciones accidentales por colisiones de IDs
+3. ✅ Se mantiene la integridad referencial de la base de datos
+4. ✅ Se puede auditar completamente cada operación
 
 ### Habilitar SSL/TLS (recomendado)
 
